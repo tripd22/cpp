@@ -1,0 +1,32 @@
+This micro benchmark is intended to demonstrate the effect of branch mispredictions and branchless programming.
+
+The set up is 3 large arrays of random numbers - each row of the third array holds value which indicates whether the result should include the corresponding row from the first array or the second array.
+
+The branching version of the code uses an if statement to check the value in the third array before deciding which calculation to do. The branchless version instead calculates both results and places them in an array. It then casts the value in the third array to a bool, and uses it to index into this array to get the correct result.
+
+You can run the benchmark with:
+
+```
+cmake --build . && ./cpp --benchmark_min_time=5
+```
+
+Sample results on my machine:
+
+| Benchmark                                       | Time        | CPU         | Iterations | UserCounters...             |
+|-------------------------------------------------|-------------|-------------|------------|-----------------------------|
+| BM_branch_prediction_random_vals/4194304        | 23802004 ns | 23786488 ns | 293        | items_per_second=176.331M/s |
+| BM_branch_prediction_30_percent_true/4194304    | 18531881 ns | 18522272 ns | 389        | items_per_second=226.447M/s |
+| BM_branch_prediction_70_percent_true/4194304    | 17395616 ns | 17382305 ns | 407        | items_per_second=241.297M/s |
+| BM_branch_prediction_almost_always_true/4194304 | 9602220 ns  | 9594872 ns  | 729        | items_per_second=437.14M/s  |
+| BM_branch_prediction_always_true/4194304        | 9904098 ns  | 9898854 ns  | 732        | items_per_second=423.716M/s |
+| BM_branchless_random_vals/4194304               | 16573468 ns | 16555101 ns | 416        | items_per_second=253.354M/s |
+| BM_branchless_always_true/4194304               | 16674837 ns | 16635934 ns | 424        | items_per_second=252.123M/s |
+
+Some interesting points:
+ - When we used completely random values in the conditional array, we get much worse performance. This is because the hardware branch prediction is basically guessing - it will be wrong 50% of the time, and have to flush the pipeline, flush the write buffer, etc.
+ - When we use 70% true / 30% true values, we get better results, but still not amazing.
+ - When we use a conditional array that is almost always true, the performance is much better. This is because the hardware branch predictor will quickly learn the pattern of the comparison, and avoid most branch mispredictions.
+ - For the branchless version of the code, the results don't change when we use random numbers or very predictable values. This is because this approach requires us to unconditionally calculate both the results.
+ - The branchless code is quicker than the branching code when the branch prediction is very bad, but worse than the branching code when the branch prediction is good. Hardware is _usually_ pretty good at prediction, and so the branchless optimization only makes sense in specific cases. You should always profile to make sure that it is worth it!
+
+If I was able to run perf on my machine, I would expect to see branch mispredictions that explain the above performance differences.
